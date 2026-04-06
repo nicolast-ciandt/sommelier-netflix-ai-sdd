@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: sommelier-mcp
+    runtime: python
+    buildCommand: pip install ".[mcp]"
+    startCommand: sommelier-mcp
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_BASE_URL
+        sync: false
+      - key: EXTRACTION_MODEL
+        value: anthropic.claude-4-6-sonnet
+      - key: GENERATION_MODEL
+        value: anthropic.claude-4-6-sonnet
+    plan: free
