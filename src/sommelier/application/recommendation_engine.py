@@ -11,6 +11,7 @@ Tasks covered:
 
 from __future__ import annotations
 
+from sommelier import debug
 from sommelier.domain.models import (
     NoResultsResult,
     PreferenceProfile,
@@ -57,6 +58,8 @@ class RecommendationEngine:
             max_candidates=_MAX_RESULTS,
         )
 
+        debug.log("engine", f"candidates={len(candidates)} seen={len(session.seen_title_ids)} profile={profile}")
+
         if len(candidates) < _MIN_RESULTS:
             reason = _detect_reason(profile, session, self._retriever)
             suggestion = (
@@ -64,6 +67,7 @@ class RecommendationEngine:
                 if reason == "all_seen"
                 else _SUGGESTION_NO_MATCH
             )
+            debug.log("engine", f"no_results reason={reason}")
             return NoResultsResult(reason=reason, suggestion=suggestion)
 
         return [

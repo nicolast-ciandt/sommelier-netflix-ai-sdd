@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 from typing import Literal
 
+from sommelier import debug
 from sommelier.domain.models import (
     NETFLIX_RATINGS_ORDERED,
     LLMUnavailableError,
@@ -138,19 +139,34 @@ class PreferenceExtractor:
         try:
             response = self._llm.complete(request)
             raw = response.content.strip()
-        except LLMUnavailableError:
+        except LLMUnavailableError as exc:
+            debug.log_exception("extractor", exc)
             return _fallback_delta(user_message)
 
-        return _parse_delta(raw, user_message)
+        debug.log("extractor", f"mode={mode} raw_response={raw!r}")
+        delta = _parse_delta(raw, user_message)
+        debug.log("extractor", f"delta={delta}")
+        return delta
 
 
 # ── Parsing helpers ───────────────────────────────────────────────────────────
 
 
+def _strip_markdown_fence(raw: str) -> str:
+    """Strip ```json ... ``` or ``` ... ``` fences if present."""
+    stripped = raw.strip()
+    if stripped.startswith("```"):
+        lines = stripped.splitlines()
+        # Drop first line (```json or ```) and last line (```)
+        inner = lines[1:-1] if lines[-1].strip() == "```" else lines[1:]
+        return "\n".join(inner).strip()
+    return stripped
+
+
 def _parse_delta(raw: str, user_message: str) -> PreferenceProfileDelta:
     """Parse raw JSON string into PreferenceProfileDelta; fallback on error."""
     try:
-        data = json.loads(raw)
+        data = json.loads(_strip_markdown_fence(raw))
         if not isinstance(data, dict):
             return _fallback_delta(user_message)
         return _build_delta(data)

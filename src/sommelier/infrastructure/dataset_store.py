@@ -1,22 +1,22 @@
-"""DatasetStore — Infrastructure adapter implementing DatasetPort.
+"""DatasetStore — Infrastructure adapter implementing DatasetPort via Neon PostgreSQL.
 
-Loads the Netflix CSV at startup, normalizes all fields into typed
-domain objects, and exposes filtering and TF-IDF similarity operations.
+Loads the Netflix catalog from the ``netflix_shows`` table in a Neon DB
+instance at startup, normalizes rows into typed domain objects, and exposes
+filtering and TF-IDF similarity operations.
 
-Tasks covered:
-  2.1 — load_and_index(), title_count(), get_by_id()   ← this file
-  2.2 — filter()                                        ← added in task 2.2
-  2.3 — tfidf_similarity()                              ← added in task 2.3
+The table is expected to have the standard Kaggle Netflix dataset columns:
+    show_id, type, title, director, cast, country, date_added,
+    release_year, rating, duration, listed_in, description
 """
 
 from __future__ import annotations
 
 import sys
-from pathlib import Path
 from typing import TYPE_CHECKING
 
+from sommelier import debug
+
 import numpy as np
-import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -34,20 +34,13 @@ if TYPE_CHECKING:
 
 
 def _nullable_str(val: object) -> str | None:
-    """Return *val* as a stripped string, or ``None`` if it is blank/NaN."""
     if val is None:
         return None
-    if isinstance(val, float):
-        # pandas represents missing values as float NaN
-        import math
-        if math.isnan(val):
-            return None
     s = str(val).strip()
     return s if s else None
 
 
 def _split_comma(val: object) -> tuple[str, ...]:
-    """Split a comma-separated string into a tuple of stripped non-empty items."""
     s = _nullable_str(val)
     if s is None:
         return ()
@@ -55,7 +48,6 @@ def _split_comma(val: object) -> tuple[str, ...]:
 
 
 def _parse_duration(val: object) -> DurationInfo | None:
-    """Parse Netflix 'duration' strings such as '90 min' or '3 Seasons'."""
     s = _nullable_str(val)
     if s is None:
         return None
@@ -66,15 +58,13 @@ def _parse_duration(val: object) -> DurationInfo | None:
             return None
     if "Season" in s:
         try:
-            numeric_part = s.split()[0]
-            return DurationInfo(value=int(numeric_part), unit="Seasons")
+            return DurationInfo(value=int(s.split()[0]), unit="Seasons")
         except (ValueError, IndexError):
             return None
     return None
 
 
-def _normalize_row(row: pd.Series) -> NetflixTitle:
-    """Convert a raw pandas row into a typed ``NetflixTitle`` value object."""
+def _normalize_row(row: dict) -> NetflixTitle:
     release_year_raw = row.get("release_year")
     try:
         release_year = int(float(str(release_year_raw))) if release_year_raw is not None else 0
@@ -86,7 +76,7 @@ def _normalize_row(row: pd.Series) -> NetflixTitle:
         type=str(row["type"]).strip(),  # type: ignore[arg-type]
         title=str(row["title"]).strip(),
         director=_nullable_str(row.get("director")),
-        cast=_split_comma(row.get("cast")),
+        cast=_split_comma(row.get("cast_members")),
         country=_nullable_str(row.get("country")),
         release_year=release_year,
         rating=_nullable_str(row.get("rating")),
@@ -97,10 +87,10 @@ def _normalize_row(row: pd.Series) -> NetflixTitle:
 
 
 class DatasetStore:
-    """In-memory Netflix catalog store.
+    """Netflix catalog store backed by a Neon PostgreSQL database.
 
-    Call ``load_and_index(path)`` once at startup before any other method.
-    All subsequent operations are purely in-memory.
+    Call ``load_and_index(connection_string)`` once at startup before any
+    other method.  All subsequent operations are purely in-memory.
     """
 
     def __init__(self) -> None:
@@ -111,30 +101,50 @@ class DatasetStore:
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
-    def load_and_index(self, path: str | Path) -> None:
-        """Load and normalize the Netflix CSV at *path*.
+    def load_and_index(self, connection_string: str) -> None:
+        """Load and normalize the ``netflix_shows`` table from Neon.
 
-        Raises ``DatasetLoadError`` if the file is missing, empty, or
-        structurally malformed.  Logs a summary line to ``stderr`` on success.
+        Raises ``DatasetLoadError`` on connection failure or empty result.
+        Logs a summary line to ``stderr`` on success.
         """
-        path = Path(path)
-
-        if not path.exists():
-            raise DatasetLoadError(f"Dataset file not found: {path}")
-
         try:
-            df = pd.read_csv(path, dtype=object, keep_default_na=True)
-        except pd.errors.EmptyDataError as exc:
-            raise DatasetLoadError(f"Dataset file is empty: {path}") from exc
-        except Exception as exc:
+            import psycopg2
+            import psycopg2.extras
+        except ImportError as exc:
             raise DatasetLoadError(
-                f"Failed to read dataset at {path}: {exc}"
+                "psycopg2-binary is required for Neon DB support. "
+                "Run: pip install psycopg2-binary"
             ) from exc
 
-        if df.empty:
-            raise DatasetLoadError(f"Dataset file is empty: {path}")
+        try:
+            debug.log("dataset", f"Connecting to DB: {connection_string[:40]}...")
+            conn = psycopg2.connect(connection_string)
+            debug.log("dataset", "Connected successfully")
+        except Exception as exc:
+            debug.log_exception("dataset", exc)
+            raise DatasetLoadError(f"Failed to connect to Neon DB: {exc}") from exc
 
-        titles = [_normalize_row(row) for _, row in df.iterrows()]
+        try:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(
+                    "SELECT show_id, type, title, director, cast_members, country, "
+                    "release_year, rating, duration, listed_in, description "
+                    "FROM netflix_shows"
+                )
+                rows = cur.fetchall()
+        except Exception as exc:
+            conn.close()
+            debug.log_exception("dataset", exc)
+            raise DatasetLoadError(
+                f"Failed to query netflix_shows table: {exc}"
+            ) from exc
+        finally:
+            conn.close()
+
+        if not rows:
+            raise DatasetLoadError("netflix_shows table is empty or returned no rows")
+
+        titles = [_normalize_row(dict(row)) for row in rows]
 
         self._titles_by_id = {t.show_id: t for t in titles}
         self._titles_list = titles
@@ -145,26 +155,19 @@ class DatasetStore:
         self._tfidf_vectorizer = vectorizer
 
         print(
-            f"[DatasetStore] Loaded {len(titles)} titles from {path}",
+            f"[DatasetStore] Loaded {len(titles)} titles from Neon DB",
             file=sys.stderr,
         )
 
     # ── DatasetPort — query interface ─────────────────────────────────────────
 
     def title_count(self) -> int:
-        """Return the number of titles currently loaded."""
         return len(self._titles_list)
 
     def get_by_id(self, show_id: str) -> NetflixTitle | None:
-        """Return the title matching *show_id*, or ``None`` if not found."""
         return self._titles_by_id.get(show_id)
 
     def filter(self, criteria: DatasetFilter) -> list[NetflixTitle]:
-        """Return titles matching *criteria*.
-
-        Each non-None field in *criteria* acts as an AND condition.
-        Returns an empty list when no titles match; never raises.
-        """
         ceiling_index: int | None = None
         if criteria.maturity_ceiling is not None:
             try:
@@ -179,8 +182,8 @@ class DatasetStore:
                     continue
 
             if criteria.genres is not None:
-                lowered_criteria = {g.lower() for g in criteria.genres}
-                lowered_title = {g.lower() for g in title.genres}
+                lowered_criteria = {g.lower().rstrip("s") for g in criteria.genres}
+                lowered_title = {g.lower().rstrip("s") for g in title.genres}
                 if not lowered_criteria.intersection(lowered_title):
                     continue
 
@@ -215,12 +218,6 @@ class DatasetStore:
     def tfidf_similarity(
         self, query: str, candidates: list[NetflixTitle]
     ) -> list[ScoredTitle]:
-        """Score *candidates* by TF-IDF cosine similarity against *query*.
-
-        Returns candidates sorted descending by similarity score.
-        Empty or whitespace-only queries return all candidates with score 0.0.
-        Empty candidate list returns [].
-        """
         if not candidates:
             return []
 
@@ -228,12 +225,10 @@ class DatasetStore:
         if not query or self._tfidf_vectorizer is None or self._tfidf_matrix is None:
             return [ScoredTitle(title=t, similarity_score=0.0) for t in candidates]
 
-        # Build index mapping show_id → row position in the full matrix
         id_to_row: dict[str, int] = {
             t.show_id: i for i, t in enumerate(self._titles_list)
         }
 
-        # Rows in the full matrix corresponding to the candidate titles
         candidate_rows = [id_to_row[t.show_id] for t in candidates]
         candidate_matrix = self._tfidf_matrix[candidate_rows]
 

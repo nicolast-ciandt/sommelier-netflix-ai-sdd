@@ -33,15 +33,18 @@ def render_user_turn(message: str, *, console: Console | None = None) -> None:
 
 def render_startup(
     title_count: int,
-    dataset_path: str,
+    database_url: str,
     *,
     console: Console | None = None,
 ) -> None:
-    """Display startup information: dataset path and loaded title count."""
+    """Display startup information: database source and loaded title count."""
     con = console or _default_console
+    # Redact credentials from the URL for display
+    import re
+    safe_url = re.sub(r"://[^@]+@", "://<credentials>@", database_url)
     con.print(
         Panel(
-            f"Dataset: [bold]{dataset_path}[/bold]\n"
+            f"Database: [bold]{safe_url}[/bold]\n"
             f"Titles loaded: [bold green]{title_count}[/bold green]",
             title="[bold cyan]Sommelier[/bold cyan] — Starting up",
             border_style="cyan",

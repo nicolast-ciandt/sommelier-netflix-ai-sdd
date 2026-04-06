@@ -19,22 +19,15 @@ from sommelier.domain.candidate_retriever import CandidateRetriever
 from sommelier.domain.preference_extractor import PreferenceExtractor
 from sommelier.infrastructure.dataset_store import DatasetStore
 from sommelier.ports.interfaces import LLMResponse
-from tests.fixtures import write_fixture_csv
+from tests.fixtures import make_store
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
 @pytest.fixture()
-def fifty_csv(tmp_path):
-    return write_fixture_csv(tmp_path / "fifty.csv", n=50)
-
-
-@pytest.fixture()
-def dataset(fifty_csv):
-    ds = DatasetStore()
-    ds.load_and_index(fifty_csv)
-    return ds
+def dataset():
+    return make_store(50)
 
 
 def _pref_delta(

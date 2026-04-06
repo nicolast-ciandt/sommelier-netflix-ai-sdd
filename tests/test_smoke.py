@@ -1,13 +1,7 @@
 """Task 11.2 — Smoke test: full conversation flow with a real dataset sample.
 
 Verifies the complete user journey end-to-end using a 50-title fixture and a
-mocked LLM (no real API key required):
-
-  1. Start session → receive greeting
-  2. Preference query → 3–10 recommendations returned
-  3. Rejection feedback → rejected title absent from next round
-  4. Follow-up constraint → applied without clearing prior preferences
-  5. Response latency under 5 seconds per turn (CPU-only, no real LLM)
+mocked LLM (no real API key required).
 """
 
 from __future__ import annotations
@@ -26,22 +20,15 @@ from sommelier.domain.candidate_retriever import CandidateRetriever
 from sommelier.domain.preference_extractor import PreferenceExtractor
 from sommelier.infrastructure.dataset_store import DatasetStore
 from sommelier.ports.interfaces import LLMResponse
-from tests.fixtures import write_fixture_csv
+from tests.fixtures import make_store
 
 
 # ── Fixture & wiring ──────────────────────────────────────────────────────────
 
 
 @pytest.fixture(scope="module")
-def fifty_csv(tmp_path_factory):
-    return write_fixture_csv(tmp_path_factory.mktemp("data") / "fifty.csv", n=50)
-
-
-@pytest.fixture(scope="module")
-def dataset(fifty_csv):
-    ds = DatasetStore()
-    ds.load_and_index(fifty_csv)
-    return ds
+def dataset():
+    return make_store(50)
 
 
 class _ScriptedLLM:
@@ -115,39 +102,33 @@ class TestSmokeFlow:
 
     def test_rejected_title_absent_from_next_round(self, dataset):
         llm = _ScriptedLLM([
-            _delta(genres=["Drama"]),               # turn 1: preference
-            _delta(genres=["Drama"]),               # turn 2: feedback extraction
+            _delta(genres=["Drama"]),
+            _delta(genres=["Drama"]),
         ])
         orch = _wire(dataset, llm)
         session, _ = orch.start_session()
 
-        # Turn 1: get recommendations
         session, _ = orch.handle_turn("I want drama films", session)
         first_round_ids = frozenset(session.seen_title_ids)
         assert len(first_round_ids) >= 3
 
         rejected_id = next(iter(first_round_ids))
 
-        # Patch LLM to return the rejected ID in excluded_title_ids on next call
         orch._pe._llm.complete.side_effect = _ScriptedLLM([
-            _delta(genres=["Drama"], excluded=[rejected_id]),  # feedback turn
-            _delta(genres=["Drama"]),                           # follow-up turn
+            _delta(genres=["Drama"], excluded=[rejected_id]),
+            _delta(genres=["Drama"]),
         ]).complete
 
-        # Turn 2: rejection feedback
-        session, _ = orch.handle_turn(
-            f"not interested in that, exclude {rejected_id}", session
-        )
+        session, _ = orch.handle_turn(f"not interested in that, exclude {rejected_id}", session)
         assert rejected_id in session.seen_title_ids
 
-        # Turn 3: another preference turn — rejected_id still excluded
         session, _ = orch.handle_turn("more drama please", session)
         assert rejected_id in session.seen_title_ids
 
     def test_follow_up_constraint_applied_without_clearing_genres(self, dataset):
         llm = _ScriptedLLM([
-            _delta(genres=["Comedy"]),                                # turn 1
-            _delta(genres=["Comedy"], year_min=1990, year_max=1999),  # turn 2
+            _delta(genres=["Comedy"]),
+            _delta(genres=["Comedy"], year_min=1990, year_max=1999),
         ])
         orch = _wire(dataset, llm)
         session, _ = orch.start_session()

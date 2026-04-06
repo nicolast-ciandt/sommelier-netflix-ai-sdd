@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import sys
 
+from sommelier import debug
 from sommelier.application.recommendation_engine import RecommendationEngine
 from sommelier.application.response_generator import ResponseGenerator
 from sommelier.application.session_manager import SessionManager
@@ -89,10 +90,12 @@ class ConversationOrchestrator:
 
         try:
             session, response = self._route(user_message, session)
-        except LLMUnavailableError:
+        except LLMUnavailableError as exc:
+            debug.log_exception("orchestrator", exc)
             response = _RETRY_MSG
         except Exception as exc:
             print(f"[Orchestrator] Unexpected error: {exc}", file=sys.stderr)
+            debug.log_exception("orchestrator", exc)
             response = _ERROR_MSG
 
         session = self._sm.append_message(session, "assistant", response)
@@ -107,13 +110,16 @@ class ConversationOrchestrator:
 
         # Feedback / refinement turn
         if session.seen_title_ids and any(kw in lower for kw in _FEEDBACK_KEYWORDS):
+            debug.log("route", "intent=feedback")
             return self._feedback_turn(user_message, session)
 
         # Title detail question
         if any(lower.startswith(prefix) for prefix in _DETAIL_PREFIXES):
+            debug.log("route", "intent=title_detail")
             return session, self._title_detail_turn(user_message, session)
 
         # Default: preference extraction + recommendation
+        debug.log("route", "intent=recommendation")
         return self._recommendation_turn(user_message, session)
 
     def _recommendation_turn(

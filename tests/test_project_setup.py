@@ -7,17 +7,17 @@ ROOT = Path(__file__).parent.parent
 
 REQUIRED_RUNTIME_DEPS = {
     "anthropic",
-    "pandas",
     "scikit-learn",
     "rich",
     "python-dotenv",
+    "psycopg2-binary",
 }
 
 REQUIRED_DEV_DEPS = {"pytest", "pytest-mock"}
 
 REQUIRED_ENV_VARS = [
     "ANTHROPIC_API_KEY",
-    "DATASET_PATH",
+    "DATABASE_URL",
     "EXTRACTION_MODEL",
     "GENERATION_MODEL",
     "MAX_HISTORY_TURNS",

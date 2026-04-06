@@ -88,14 +88,14 @@ class TestDisplayHelpers:
     def test_startup_shows_title_count(self):
         from sommelier.interface.cli_adapter import render_startup
         console, buf = _console()
-        render_startup(title_count=8500, dataset_path="/data/netflix.csv", console=console)
+        render_startup(title_count=8500, database_url="postgresql://user:pw@host/db", console=console)
         assert "8500" in buf.getvalue()
 
-    def test_startup_shows_dataset_path(self):
+    def test_startup_shows_database_url(self):
         from sommelier.interface.cli_adapter import render_startup
         console, buf = _console()
-        render_startup(title_count=100, dataset_path="/data/netflix.csv", console=console)
-        assert "netflix.csv" in buf.getvalue()
+        render_startup(title_count=100, database_url="postgresql://user:pw@neon.host/db", console=console)
+        assert "neon.host" in buf.getvalue()
 
 
 # ── 10.2: Conversation loop ───────────────────────────────────────────────────

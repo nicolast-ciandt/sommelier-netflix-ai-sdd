@@ -19,10 +19,11 @@ import anthropic
 from sommelier.domain.models import LLMUnavailableError
 from sommelier.ports.interfaces import LLMRequest, LLMResponse
 
-_MODEL_MAP: dict[str, str] = {
-    "extraction": "claude-haiku-4-5-20251001",
-    "generation": "claude-sonnet-4-6",
-}
+def _model_map() -> dict[str, str]:
+    return {
+        "extraction": os.environ.get("EXTRACTION_MODEL", "anthropic.claude-4-6-sonnet"),
+        "generation": os.environ.get("GENERATION_MODEL", "anthropic.claude-4-6-sonnet"),
+    }
 
 
 class ClaudeAdapter:
@@ -39,7 +40,7 @@ class ClaudeAdapter:
 
         Raises LLMUnavailableError on any Anthropic SDK or network error.
         """
-        model_id = _MODEL_MAP[request.model]
+        model_id = _model_map()[request.model]
         messages = [
             {"role": m.role, "content": m.content}
             for m in request.messages

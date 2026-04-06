@@ -1,9 +1,10 @@
-"""Shared fixture generators for integration tests."""
+"""Shared fixture generators for integration and performance tests."""
 
 from __future__ import annotations
 
-import csv
-from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+from sommelier.infrastructure.dataset_store import DatasetStore
 
 
 _GENRES = [
@@ -14,15 +15,9 @@ _COUNTRIES = ["United States", "United Kingdom", "France", "Japan", "Brazil"]
 _RATINGS = ["G", "PG", "PG-13", "TV-14", "TV-MA", "R"]
 _TYPES = ["Movie", "TV Show"]
 
-_HEADER = [
-    "show_id", "type", "title", "director", "cast", "country",
-    "date_added", "release_year", "rating", "duration", "listed_in",
-    "description",
-]
 
-
-def write_fixture_csv(path: Path, n: int = 50) -> Path:
-    """Write an n-row Netflix-style CSV to *path* and return it."""
+def make_fixture_rows(n: int = 50) -> list[dict]:
+    """Return n Netflix-style row dicts."""
     rows = []
     for i in range(1, n + 1):
         genre = _GENRES[(i - 1) % len(_GENRES)]
@@ -30,24 +25,37 @@ def write_fixture_csv(path: Path, n: int = 50) -> Path:
         content_type = _TYPES[(i - 1) % 2]
         rating = _RATINGS[(i - 1) % len(_RATINGS)]
         country = _COUNTRIES[(i - 1) % len(_COUNTRIES)]
-        year = 1990 + (i % 35)  # spans 1990-2024
+        year = 1990 + (i % 35)
         duration = f"{80 + i} min" if content_type == "Movie" else f"{1 + (i % 5)} Seasons"
-        rows.append([
-            f"s{i}",
-            content_type,
-            f"Title {i}: A {genre} {content_type}",
-            f"Director {i}",
-            f"Actor {i}A, Actor {i}B",
-            country,
-            f"January {1 + (i % 28)} 2022",
-            str(year),
-            rating,
-            duration,
-            f"{genre}, {genre2}",
-            f"A compelling {genre.lower()} story featuring adventure and intrigue. Film number {i}.",
-        ])
-    with open(path, "w", newline="", encoding="utf-8") as fh:
-        writer = csv.writer(fh)
-        writer.writerow(_HEADER)
-        writer.writerows(rows)
-    return path
+        rows.append({
+            "show_id": f"s{i}",
+            "type": content_type,
+            "title": f"Title {i}: A {genre} {content_type}",
+            "director": f"Director {i}",
+            "cast": f"Actor {i}A, Actor {i}B",
+            "country": country,
+            "release_year": str(year),
+            "rating": rating,
+            "duration": duration,
+            "listed_in": f"{genre}, {genre2}",
+            "description": f"A compelling {genre.lower()} story featuring adventure and intrigue. Film number {i}.",
+        })
+    return rows
+
+
+def make_store(n: int = 50) -> DatasetStore:
+    """Return a DatasetStore loaded with n generated rows via a mocked psycopg2."""
+    rows = make_fixture_rows(n)
+
+    mock_cursor = MagicMock()
+    mock_cursor.__enter__ = lambda s: s
+    mock_cursor.__exit__ = MagicMock(return_value=False)
+    mock_cursor.fetchall.return_value = rows
+
+    mock_conn = MagicMock()
+    mock_conn.cursor.return_value = mock_cursor
+
+    with patch("psycopg2.connect", return_value=mock_conn):
+        ds = DatasetStore()
+        ds.load_and_index("postgresql://fake/db")
+    return ds

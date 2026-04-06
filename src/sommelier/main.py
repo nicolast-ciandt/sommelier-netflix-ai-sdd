@@ -16,26 +16,20 @@ from sommelier.domain.candidate_retriever import CandidateRetriever
 from sommelier.domain.preference_extractor import PreferenceExtractor
 from sommelier.infrastructure.claude_adapter import ClaudeAdapter
 from sommelier.infrastructure.dataset_store import DatasetStore
-from sommelier.infrastructure.neon_dataset_store import NeonDatasetStore
 
 
 def build_app() -> ConversationOrchestrator:
     """Instantiate and wire all components; return the orchestrator.
 
-    Reads DATABASE_URL (preferred) or DATASET_PATH from the environment.
-    Raises DatasetLoadError if the data source is missing or malformed.
+    Reads DATABASE_URL from the environment.
+    Raises DatasetLoadError if the connection fails or the table is empty.
     """
     api_key = os.environ.get("ANTHROPIC_API_KEY")
 
-    # Infrastructure — prefer Neon DB when DATABASE_URL is configured
     database_url = os.environ.get("DATABASE_URL")
-    if database_url:
-        dataset: DatasetStore | NeonDatasetStore = NeonDatasetStore()
-        dataset.load_and_index(database_url)
-    else:
-        dataset_path = os.environ.get("DATASET_PATH", "netflix_titles.csv")
-        dataset = DatasetStore()
-        dataset.load_and_index(dataset_path)
+    dataset = DatasetStore()
+    dataset.load_and_index(database_url)
+
     llm = ClaudeAdapter(api_key=api_key)
 
     # Domain
