@@ -24,7 +24,12 @@ from mcp.server.fastmcp import FastMCP
 
 from sommelier.main import build_app
 
-mcp = FastMCP("sommelier")
+import os as _os
+mcp = FastMCP(
+    "sommelier",
+    host=_os.environ.get("HOST", "0.0.0.0"),
+    port=int(_os.environ.get("PORT", 8000)),
+)
 
 # Load dataset and wire all components once at startup
 _app = build_app()
