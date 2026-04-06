@@ -29,6 +29,7 @@ mcp = FastMCP(
     "sommelier",
     host=_os.environ.get("HOST", "0.0.0.0"),
     port=int(_os.environ.get("PORT", 8000)),
+    stateless_http=True,
 )
 
 # Load dataset and wire all components once at startup
