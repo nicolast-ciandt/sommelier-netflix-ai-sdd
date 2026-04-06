@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(/c/Users/nicolast/AppData/Local/Programs/Python/Python312/python.exe -m pytest tests/test_conversation_orchestrator.py -x -q)",
+      "Bash(/c/Users/nicolast/AppData/Local/Programs/Python/Python312/python.exe -m pytest tests/test_conversation_orchestrator.py -v)",
+      "Bash(/c/Users/nicolast/AppData/Local/Programs/Python/Python312/python.exe -m pytest -q)",
+      "Bash(/c/Users/nicolast/AppData/Local/Programs/Python/Python312/python.exe -m pytest tests/test_cli_adapter.py -x -q)",
+      "Bash(/c/Users/nicolast/AppData/Local/Programs/Python/Python312/python.exe -m pytest tests/test_cli_adapter.py -v)",
+      "Bash(python:*)",
+      "Bash(pip install:*)",
+      "Bash(python3:*)",
+      "Bash(py:*)"
+    ]
+  }
+}
