@@ -1,0 +1,7 @@
+# Sommelier CLI/runtime + MCP server (HTTP transport).
+#   pip install -r requirements-mcp.txt
+#   pip install -e .
+
+-r requirements.txt
+
+mcp[cli]>=1.2.0

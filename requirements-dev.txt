@@ -1,0 +1,8 @@
+# Development and tests (optional).
+#   pip install -r requirements-dev.txt
+#   pip install -e .
+
+-r requirements.txt
+
+pytest>=8.0
+pytest-mock>=3.12
