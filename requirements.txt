@@ -1,0 +1,13 @@
+# Runtime dependencies (mirrors [project] dependencies in pyproject.toml).
+# Install the package in editable mode for CLI/MCP entry points:
+#   pip install -r requirements.txt
+#   pip install -e .
+#
+# Or in one step from pyproject.toml:
+#   pip install -e .
+
+anthropic>=0.47
+scikit-learn>=1.4
+rich>=13.0
+python-dotenv>=1.0
+psycopg2-binary>=2.9
